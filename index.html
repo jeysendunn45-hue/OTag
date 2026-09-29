@@ -15,12 +15,14 @@ canvas{display:block;touch-action:none}
 <div id="xh"></div><div id="ui"><div id="hint"><b>ORION TAG</b> — Desktop: drag = look, WASD move, Space jump, Y/M/Tab = mod menu, click buttons.<br>VR: move your hands against surfaces to push/climb/swing. Trigger = click. Left Y = mod menu. Grip = hold still.<br>Items: X = items menu (guns, grapple, NPCs, bendy arms). VR: squeeze = grab, trigger = fire. Desktop: E = grab/drop, F = fire (hold for auto). Hold an NPC, squeeze a limb with your other hand and pull to tear it off.</div><button id="vr" disabled>CHECKING VR…</button></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+let showErr=(w,e)=>console.error(w,e);
 const V3=THREE.Vector3,Q=THREE.Quaternion;
 const PAL=[0xff5d73,0x5dc8ff,0x9b6bff,0x5dffb0,0xffc95d,0xff8f3a,0xf5f5ff,0x2b2f55],COLN=['Coral','Sky','Violet','Mint','Gold','Orange','Ghost','Void'],ACCN=['None','Cone Hat','Antenna','Halo','Crown','Horns','Headphones','Top Hat'];
 /* ===== PATCH NOTES - EDIT HERE =====
    Newest version first. Each entry: v = version, d = date, notes = list of changes.
    Add a new {...} entry at the top of the list whenever you update the game. */
 const PATCH_NOTES=[
+ {v:'1.0.2.5.2 Sandbox Grab + Spawn Fix',d:'2026-09-29',notes:['Sandbox always spawns a Gun, Grapple Gun, 2 Citizens and a Zombie in front of you on the first frame, retrying any that fail','Balls and props can now be grabbed and thrown','Desktop: look at anything within 3 m and press E to grab it, F to fire','Frame and spawn errors now always show on screen']},
  {v:'1.0.2.5.1 Sandbox Spawn Fix',d:'2026-09-29',notes:['Fixed a script error that stopped items and NPCs from spawning','Sandbox now starts with a Gun, Grapple Gun, 2 Citizens and a Zombie','Spawn buttons in the X menu now show an on-screen error if anything fails']},
  {v:'1.0.2.5 Fight Back',d:'2026-09-28',notes:['Two NPC types: Citizens and Zombies, both in the X menu','Punch or shoot a citizen: they pull a gun and shoot back, nearby citizens flee or fight','Zombies chase you and claw you across the room','Grab a citizen, squeeze a limb with your other hand and pull to tear it off','Torn limbs and heads are items you can swing or throw','Gun: hold trigger for full auto, muzzle flash, recoil kick, new gunshot sound','You get a red flash and knockback when hit']},
  {v:'1.0.2.4 Guns & NPCs',d:'2026-09-28',notes:['New X button items menu (X key on desktop): spawn a Gun, Grapple Gun or NPC','Pistol: squeeze to grab, trigger to fire, headshots do double damage','Grapple Gun: hold trigger to hook a surface and reel yourself in','NPCs wander, can be shot, shoved, grabbed and thrown','New mod: Bendy Arms with a bending elbow, toggled in the X menu','Spawned items float until grabbed. Infinite Jump is now A button only']},
@@ -48,7 +50,7 @@ const items=[],npcs=[],sp=[],cols=[],balls=[],orbs=[],fx=[],disp=new V3(),UB=new
 const mat=c=>mats[c]||(mats[c]=new THREE.MeshLambertMaterial({color:c}));
 function box(x,y,z,w,h,d,c=0x3a3f7a){const m=new THREE.Mesh(UB,mat(c));m.position.set(x,y,z);m.scale.set(w,h,d);world.add(m);cols.push({x0:x-w/2,x1:x+w/2,y0:y-h/2,y1:y+h/2,z0:z-d/2,z1:z+d/2})}
 function grid(n,d){const g=new THREE.GridHelper(n,d,0x5de1ff,0x2a3170);g.position.y=.02;world.add(g)}
-function ball(x,y,z){const m=new THREE.Mesh(new THREE.SphereGeometry(.22,12,10),mat(PAL[balls.length%8]));m.position.set(x,y,z);world.add(m);balls.push({m,v:new V3(),r:.22})}
+function ball(x,y,z){const m=new THREE.Mesh(new THREE.SphereGeometry(.22,12,10),mat(PAL[balls.length%8]));m.position.set(x,y,z);world.add(m);balls.push({m,v:new V3(),r:.22,h:-1})}
 
 /* ---------- simple collision: sphere vs AABB ---------- */
 function push(p,r){disp.set(0,0,0);let hit=false;
@@ -171,7 +173,12 @@ function spawnAt(){cam.getWorldPosition(_h);cam.getWorldQuaternion(_q);_f.set(0,
 function spawnItem(k,p){const m=mkItem(k);m.position.copy(p||spawnAt());world.add(m);items.push({k,m,v:new V3(),h:-1,cd:0,fl:true});if(items.length>16){const o=items.find(x=>x.h<0);if(o){world.remove(o.m);items.splice(items.indexOf(o),1)}}}
 function mkNpc(p,t){const a=makeAvatar(),k=npcs.length,z=t==='z',b=z?3:(k*3+1)%8,hc=z?3:(k*5+2)%8;world.add(a.g);recolor(a,b,hc,z?0:1+k%7);const gm=z?null:mkItem('gun');if(gm){gm.visible=false;world.add(gm)}
 npcs.push({a,p,t,gm,c:[b,hc],lost:[0,0,0],lp:[new V3(),new V3(),new V3()],v:new V3(),ry:Math.random()*6.28,hp:z?8:5,tg:p.clone(),tt:0,h:-1,dead:0,ft:0,g:false,fl:0,mv:false,st:'w',stt:0,sc:0,pc:0})}
-function starter(){spawnItem('gun',new V3(-.4,1.2,-1.3));spawnItem('grap',new V3(.4,1.2,-1.3));mkNpc(new V3(-4,1,-6),'c');mkNpc(new V3(4,1,-6),'c');mkNpc(new V3(0,1,-16),'z')}
+let sbPend=false,sbDone=[0,0,0,0,0],sbTry=0;
+function seedSandbox(){cam.getWorldPosition(_h);cam.getWorldQuaternion(_q);_f.set(0,0,-1).applyQuaternion(_q);_f.y=0;if(_f.lengthSq()<1e-6)_f.set(0,0,-1);_f.normalize();
+const fx=_f.x,fz=_f.z,rx=-fz,rz=fx,hy=Math.max(_h.y-.5*S.scale,.9),bx=_h.x,bz=_h.z,at=(f,r,y)=>new V3(bx+fx*f+rx*r,y,bz+fz*f+rz*r);
+const steps=[()=>spawnItem('gun',at(.7,-.3,hy)),()=>spawnItem('grap',at(.7,.3,hy)),()=>mkNpc(at(5,-2.5,1),'c'),()=>mkNpc(at(5,2.5,1),'c'),()=>mkNpc(at(12,0,1),'z')];
+steps.forEach((f,i)=>{if(sbDone[i])return;try{f();sbDone[i]=1}catch(e){console.error(e);showErr('sandbox spawn',e)}});return sbDone.every(x=>x)}
+function starter(){sbDone=[0,0,0,0,0];sbTry=0;sbPend=true}
 function rmNpc(o){world.remove(o.a.g);if(o.gm)world.remove(o.gm)}
 function spawnNpc(t){const p=spawnAt();p.addScaledVector(_f,1.4).y+=.6;if(npcs.length>=14){const o=npcs.shift();rmNpc(o);hands.forEach(H=>{if(H.it===o)H.it=null})}mkNpc(p,t)}
 function clearAll(){items.forEach(o=>world.remove(o.m));npcs.forEach(rmNpc);items.length=0;npcs.length=0;hands.forEach(H=>H.it=null);grap.on=false}
@@ -266,7 +273,7 @@ r.av.g.visible=r.mode===mode;if(!r.av.g.visible)continue;for(let i=0;i<21;i++)r.
 recolor(r.av,r.c[0],r.c[1],r.c[2]);poseAvatar(r.av,P[0].fromArray(c,0),Pq[0].fromArray(c,3).normalize(),P[1].fromArray(c,7),Pq[1].fromArray(c,10).normalize(),P[2].fromArray(c,14),Pq[2].fromArray(c,17).normalize(),1,1.3)}}
 
 /* ---------- core: VR hand-physics locomotion ---------- */
-let snapLatch=0;const _o1=new V3(),_o2=new V3(),_o3=new V3(),_o4=new V3();
+let snapLatch=0;const _o1=new V3(),_o2=new V3(),_o3=new V3(),_o4=new V3(),_g1=new V3(),_g2=new V3();
 function toW(v,o,s){return o.copy(v).multiplyScalar(s).applyAxisAngle(_up,rig.rotation.y).add(rig.position)}
 function doTurn(a){const s=S.scale;_o1.set(cam.position.x,0,cam.position.z).multiplyScalar(s).applyAxisAngle(_up,rig.rotation.y);rig.rotation.y+=a;_o2.set(cam.position.x,0,cam.position.z).multiplyScalar(s).applyAxisAngle(_up,rig.rotation.y);rig.position.add(_o1).sub(_o2)}
 const hands=[0,1].map(()=>({lp:new V3(),pv:new V3(),tg:new V3(),pt:new V3(),pos:new V3(),wv:new V3(),hit:false,init:false,q:new Q()}));
@@ -309,9 +316,10 @@ if(rig.position.y<-40){rig.position.copy(spawn);vel.set(0,0,0)}
 for(let i=0;i<2;i++){const H=hands[i];if(!H.hit)toW(H.lp,H.pos,s)}
 toW(hp,hpW,s);cam.getWorldQuaternion(hq);
 // items, guns, grapple, NPCs
+if(sbPend&&mode==='sandbox'){if(seedSandbox()||++sbTry>60)sbPend=false}
 const lock=modOpen||itmOpen,cs=[cl,cr];
 for(let i=0;i<2;i++){const H=hands[i],c=cs[i],sq=xr?btn(c,1):(i===1&&dGrab),tr=xr?btn(c,0):(i===1&&!!keys.KeyF),te=tr&&!H.tr&&!lock;H.tr=tr;
-if(sq&&!H.sq&&!H.it&&!lock){const oh=hands[1-i].it;let tk=-1,td=.3*s;if(oh&&oh.a)for(let k=0;k<3;k++){const d=oh.lp[k].distanceTo(H.pos);if(!oh.lost[k]&&d<td){td=d;tk=k}}if(tk>=0){H.tear={n:oh,k:tk};beep(260,.05)}else{let bd=.45*s,bo=null;for(const q of items.concat(npcs)){if(q.h>=0||q.dead>0)continue;const p=q.m?q.m.position:q.p,d=p.distanceTo(H.pos)-(q.m?0:.25);if(d<bd){bd=d;bo=q}}if(bo){bo.h=i;H.it=bo;beep(500,.05)}}}
+if(sq&&!H.sq&&!H.it&&!lock){const oh=hands[1-i].it;let tk=-1,td=.3*s;if(oh&&oh.a)for(let k=0;k<3;k++){const d=oh.lp[k].distanceTo(H.pos);if(!oh.lost[k]&&d<td){td=d;tk=k}}if(tk>=0){H.tear={n:oh,k:tk};beep(260,.05)}else{let bd=(xr?.45:3)*s,bo=null;for(const q of items.concat(npcs,balls)){if(q.h>=0||q.dead>0)continue;const p=q.m?q.m.position:q.p,d=p.distanceTo(xr?H.pos:hpW)-(q.m?0:.25);if(!xr){_g1.copy(p).sub(hpW);const L=_g1.length()||1;_g2.set(0,0,-1).applyQuaternion(H.q);if(_g1.dot(_g2)/L<.85)continue}if(d<bd){bd=d;bo=q}}if(bo){bo.h=i;H.it=bo;beep(500,.05)}}}
 if(!sq||(H.tear&&hands[1-i].it!==H.tear.n))H.tear=null;else if(H.tear&&H.tear.n.lp[H.tear.k].distanceTo(H.pos)>.5*s){tearOff(i,H.tear.n,H.tear.k);H.tear=null}
 if(!sq&&H.it){const q=H.it;q.h=-1;q.v.copy(H.wv).clampLength(0,14);H.it=null}
 H.sq=sq;const ho=H.it;
@@ -359,7 +367,7 @@ if(n.gm){const on=fgt&&!n.lost[1];n.gm.visible=on;if(on){n.gm.position.copy(P[2]
 hurtT-=dt;rv.material.opacity=Math.max(0,hurtT)*1.1;
 for(let i=sp.length-1;i>=0;i--){const q=sp[i];q.t-=dt;if(q.t<=0){world.remove(q.m);sp.splice(i,1);continue}if(q.v){q.v.y-=9.8*dt;q.m.position.addScaledVector(q.v,dt)}else q.m.scale.x=q.m.scale.y=.014*q.t/.07}
 // props
-for(const b of balls){b.v.y-=9.8*dt;const p=b.m.position;p.addScaledVector(b.v,dt);if(push(p,b.r)){tmp.copy(disp).normalize();const vn=b.v.dot(tmp);if(vn<0)b.v.addScaledVector(tmp,-1.6*vn);b.v.multiplyScalar(.99)}
+for(const b of balls){if(b.h>=0){b.v.set(0,0,0);continue}b.v.y-=9.8*dt;const p=b.m.position;p.addScaledVector(b.v,dt);if(push(p,b.r)){tmp.copy(disp).normalize();const vn=b.v.dot(tmp);if(vn<0)b.v.addScaledVector(tmp,-1.6*vn);b.v.multiplyScalar(.99)}
 for(const H of hands){tmp.copy(p).sub(H.pos);const d=tmp.length(),hr=.1*S.hand*s;if(d<b.r+hr&&d>1e-5){tmp.divideScalar(d);p.addScaledVector(tmp,b.r+hr-d);b.v.addScaledVector(tmp,Math.max(0,H.wv.dot(tmp)-b.v.dot(tmp))*1.3)}}
 if(p.y<-20){p.set(0,3,-6);b.v.set(0,0,0)}}
 if(mode==='play'||mode==='comp'){roundT-=dt;for(const o of orbs){o.m.rotation.y+=dt*2;if(o.t>0){o.t-=dt;if(o.t<=0)o.m.visible=true}else if(roundT>0)for(const H of hands)if(H.pos.distanceTo(o.m.position)<.4*s+.1){o.m.visible=false;o.t=6;score++;if(mode==='comp'&&score>S.cbest){S.cbest=score;save()}beep(900,.12);break}}
