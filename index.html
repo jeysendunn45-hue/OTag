@@ -22,6 +22,7 @@ const PAL=[0xff5d73,0x5dc8ff,0x9b6bff,0x5dffb0,0xffc95d,0xff8f3a,0xf5f5ff,0x2b2f
    Newest version first. Each entry: v = version, d = date, notes = list of changes.
    Add a new {...} entry at the top of the list whenever you update the game. */
 const PATCH_NOTES=[
+ {v:'1.0.5.1 VR Mirror & Ultra Detail',d:'2026-09-29',notes:['VR: the mirror now places itself behind wherever you are actually facing when you enter VR','High graphics is now ultra: much higher render resolution, VR resolution boost with foveation off, real-time shadows that follow you, and a sharper 1024 mirror','Low graphics lowers VR resolution for better speed']},
  {v:'1.0.5 Slice',d:'2026-09-29',notes:['Items menu now has a Spawn Melee Weapon button','Machete cuts anything in half: trees, blocks, pillars. Swing sideways to cut horizontally, or downward to split vertically. Cut pieces fall and slide apart','A fast machete swing cuts an NPC in half','NPC arms are now grabbed anywhere along the arm, not just at the hand. Desktop: look at an arm and press E','Pulling an arm away from its shoulder tears it off']},
  {v:'1.0.4.2 Mirror',d:'2026-09-29',notes:['New mirror behind you in the main menu so you can check your body, hands and accessory. It updates live as you change outfit options in Settings']},
  {v:'1.0.4.1 Reputation & Arm Grab',d:'2026-09-29',notes:['Reputation: kill 10 zombies and citizens stop turning on you when you kill another NPC. Kill 50 and they never get aggressive with you at all','Zombie kills are saved and shown on your wrist as Z:','Citizens cheer when you kill a zombie near them','You can now grab an arm off any NPC, not just one you are holding. Squeeze next to the arm and pull. Desktop: E next to an arm tears it off','The Machete also spawns with the Sandbox starter items']},
@@ -46,15 +47,16 @@ const save=()=>{try{localStorage.setItem('orion',JSON.stringify(S))}catch(e){}};
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.xr.enabled=true;document.body.appendChild(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x05060f);scene.fog=new THREE.Fog(0x05060f,30,150);
 const cam=new THREE.PerspectiveCamera(70,1,.03,400),rig=new THREE.Group();rig.add(cam);scene.add(rig);cam.position.set(0,1.6,0);
-function applyGfx(){renderer.setPixelRatio(Math.min(devicePixelRatio,2)*S.gfx);renderer.setSize(innerWidth,innerHeight)}
+function applyGfx(){const hi=S.gfx>1;renderer.setPixelRatio(Math.min(devicePixelRatio,2)*(hi?1.6:S.gfx));renderer.setSize(innerWidth,innerHeight);
+try{if(renderer.shadowMap.enabled!==hi){renderer.shadowMap.enabled=hi;renderer.shadowMap.type=THREE.PCFSoftShadowMap;Object.values(mats).forEach(m=>m.needsUpdate=true)}dl.castShadow=hi;if(mrt){const n=hi?1024:S.gfx<1?256:512;mrt.setSize(n,n)}}catch(e){}}
 applyGfx();addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();applyGfx()});cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
-const HL=new THREE.HemisphereLight(0xaad4ff,0x221144,1.15);scene.add(HL);const dl=new THREE.DirectionalLight(0xffffff,.6);dl.position.set(20,40,10);scene.add(dl);
+const HL=new THREE.HemisphereLight(0xaad4ff,0x221144,1.15);scene.add(HL);const dl=new THREE.DirectionalLight(0xffffff,.6);dl.position.set(20,40,10);scene.add(dl);dl.shadow.mapSize.set(2048,2048);{const sc=dl.shadow.camera;sc.left=sc.bottom=-60;sc.right=sc.top=60;sc.far=200}dl.shadow.bias=-.0005;scene.add(dl.target);
 {const g=new THREE.BufferGeometry(),a=[];for(let i=0;i<1400;i++){const u=Math.random()*6.283,v=Math.acos(2*Math.random()-1),r=250;a.push(r*Math.sin(v)*Math.cos(u),r*Math.cos(v),r*Math.sin(v)*Math.sin(u))}
 g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));window.STARS=new THREE.Points(g,new THREE.PointsMaterial({color:0xcfe8ff,size:1.4,fog:false}));scene.add(window.STARS)}
 const world=new THREE.Group();scene.add(world);
-let mir=null,mrt=null;const chunks=[],_a1=new V3(),_a2=new V3(),_a3=new V3(),_a4=new V3();const decals=[],items=[],npcs=[],sp=[],cols=[],balls=[],orbs=[],fx=[],disp=new V3(),UB=new THREE.BoxGeometry(1,1,1),mats={};
+var mir=null,mrt=null;const chunks=[],_a1=new V3(),_a2=new V3(),_a3=new V3(),_a4=new V3();const decals=[],items=[],npcs=[],sp=[],cols=[],balls=[],orbs=[],fx=[],disp=new V3(),UB=new THREE.BoxGeometry(1,1,1),mats={};
 const mat=c=>mats[c]||(mats[c]=new THREE.MeshLambertMaterial({color:c}));
-function box(x,y,z,w,h,d,c=0x3a3f7a){const m=new THREE.Mesh(UB,mat(c));m.position.set(x,y,z);m.scale.set(w,h,d);world.add(m);cols.push({x0:x-w/2,x1:x+w/2,y0:y-h/2,y1:y+h/2,z0:z-d/2,z1:z+d/2,m,c})}
+function box(x,y,z,w,h,d,c=0x3a3f7a){const m=new THREE.Mesh(UB,mat(c));m.position.set(x,y,z);m.scale.set(w,h,d);m.castShadow=m.receiveShadow=true;world.add(m);cols.push({x0:x-w/2,x1:x+w/2,y0:y-h/2,y1:y+h/2,z0:z-d/2,z1:z+d/2,m,c})}
 function grid(n,d){const g=new THREE.GridHelper(n,d,0x5de1ff,0x2a3170);g.position.y=.02;world.add(g)}
 function ball(x,y,z){const m=new THREE.Mesh(new THREE.SphereGeometry(.22,12,10),mat(PAL[balls.length%8]));m.position.set(x,y,z);world.add(m);balls.push({m,v:new V3(),r:.22,h:-1})}
 
@@ -100,11 +102,14 @@ for(let i=0;i<16;i++){const a=i*2.4,r=8+(i%4)*6,o=new THREE.Mesh(og,om);o.positi
 spawn.set(0,.3,28)}}
 
 /* ---------- lobby mirror (off-axis planar reflection) ---------- */
-function mkMirror(){const Z=3.5,W=2.2,Hh=2.2,Y=1.4,rt=mrt||(mrt=new THREE.WebGLRenderTarget(512,512)),mesh=new THREE.Mesh(new THREE.PlaneGeometry(W,Hh),new THREE.MeshBasicMaterial({map:rt.texture,side:THREE.DoubleSide,fog:false}));mesh.position.set(0,Y,Z);world.add(mesh);
-const fm=new THREE.MeshBasicMaterial({color:0x5de1ff});[[0,Y+Hh/2,W+.12,.08],[0,Y-Hh/2,W+.12,.08],[-W/2,Y,.08,Hh],[W/2,Y,.08,Hh]].forEach(([x,y,w,h])=>{const f=new THREE.Mesh(UB,fm);f.scale.set(w,h,.06);f.position.set(x,y,Z-.02);world.add(f)});
-mir={mesh,rt,z:Z,w:W,h:Hh,y:Y,cam:new THREE.PerspectiveCamera()}}
-function renderMirror(){if(!mir||mode!=='lobby')return;cam.getWorldPosition(_h);const d=mir.z-_h.z;if(d<.3)return;const c=mir.cam;c.position.set(_h.x,_h.y,mir.z+d);c.quaternion.identity();c.updateMatrixWorld(true);
-c.projectionMatrix.makePerspective(-mir.w/2-_h.x,mir.w/2-_h.x,mir.y+mir.h/2-_h.y,mir.y-mir.h/2-_h.y,d,300);c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
+function mkMirror(){const W=2.2,Hh=2.2,n=S.gfx>1?1024:S.gfx<1?256:512,rt=mrt||(mrt=new THREE.WebGLRenderTarget(n,n)),g=new THREE.Group(),mesh=new THREE.Mesh(new THREE.PlaneGeometry(W,Hh),new THREE.MeshBasicMaterial({map:rt.texture,side:THREE.DoubleSide,fog:false}));g.add(mesh);
+const fm=new THREE.MeshBasicMaterial({color:0x5de1ff});[[0,Hh/2,W+.12,.08],[0,-Hh/2,W+.12,.08],[-W/2,0,.08,Hh],[W/2,0,.08,Hh]].forEach(([x,y,w,h])=>{const f=new THREE.Mesh(UB,fm);f.scale.set(w,h,.06);f.position.set(x,y,-.02);g.add(f)});
+world.add(g);g.position.set(0,1.4,3.5);mir={g,mesh,rt,w:W,h:Hh,phi:0,cam:new THREE.PerspectiveCamera(),xf:renderer.xr.isPresenting?9:99}}
+function placeMirror(){cam.getWorldDirection(_f);_f.y=0;if(_f.lengthSq()<1e-4)_f.set(0,0,-1);_f.normalize();cam.getWorldPosition(_h);mir.phi=Math.atan2(-_f.x,-_f.z);mir.g.position.set(_h.x-_f.x*3.5,1.4,_h.z-_f.z*3.5)}
+function renderMirror(){if(!mir||mode!=='lobby')return;if(mir.xf<10&&++mir.xf===10)placeMirror();const g=mir.g,c=mir.cam,ph=mir.phi;g.quaternion.setFromAxisAngle(_up,ph);g.updateMatrixWorld(true);cam.getWorldPosition(_h);
+const zc=_a1.set(Math.sin(ph),0,Math.cos(ph)),xc=_a2.set(Math.cos(ph),0,-Math.sin(ph)),rel=_a3.copy(_h).sub(g.position),d=-rel.dot(zc);if(d<.3)return;
+const a=rel.dot(xc),b=rel.y;c.position.copy(g.position).add(rel).addScaledVector(zc,2*d);c.quaternion.setFromAxisAngle(_up,ph);c.updateMatrixWorld(true);
+c.projectionMatrix.makePerspective(-mir.w/2-a,mir.w/2-a,mir.h/2-b,-mir.h/2-b,d,300);c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
 const xe=renderer.xr.enabled,rt0=renderer.getRenderTarget();mir.mesh.visible=false;me.head.visible=true;renderer.xr.enabled=false;
 try{renderer.setRenderTarget(mir.rt);renderer.clear();renderer.render(scene,c)}finally{renderer.setRenderTarget(rt0);renderer.xr.enabled=xe;me.head.visible=false;mir.mesh.visible=true}}
 /* ---------- avatar (original stylized character) ---------- */
@@ -121,7 +126,7 @@ const tophat=new THREE.Group(),thb=new THREE.Mesh(new THREE.CylinderGeometry(.15
 a.accs=[null,cone,ant,halo,crown,horns,phones,tophat];a.accs.forEach(x=>x&&a.head.add(x));
 a.body=new THREE.Mesh(new THREE.SphereGeometry(1,12,10),a.bm);
 a.arms=[0,1].map(()=>new THREE.Mesh(new THREE.BoxGeometry(.05,.05,1),a.bm));a.arms2=[0,1].map(()=>{const m=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,1),a.bm);m.visible=false;return m});a.hands=[0,1].map(()=>new THREE.Mesh(new THREE.SphereGeometry(.07,12,10),a.hm));
-g.add(a.head,a.body,...a.arms,...a.arms2,...a.hands);scene.add(g);return a}
+g.add(a.head,a.body,...a.arms,...a.arms2,...a.hands);g.traverse(o=>{if(o.isMesh)o.castShadow=true});scene.add(g);return a}
 function recolor(a,b,h,ac){a.bm.color.setHex(PAL[b]);a.hm.color.setHex(PAL[h]);a.accs.forEach((x,i)=>x&&(x.visible=i===ac))}
 const _bs=new V3(),_e=new THREE.Euler(),_yq=new Q(),_up=new V3(0,1,0),_sh=new V3(),_mid=new V3(),_dv=new V3(),_el=new V3();
 function poseAvatar(a,hp,hq,lp,lq,rp,rq,sc,hs){a.head.position.copy(hp);a.head.quaternion.copy(hq);a.head.scale.setScalar(sc);
@@ -287,7 +292,7 @@ vrb.textContent=ok?'ENTER VR':'VR UNAVAILABLE';vrb.disabled=!ok;
 const hintEl=document.getElementById('hint');const showErr=(w,e)=>{console.error(w,e);hintEl.insertAdjacentHTML('beforeend','<br><span style="color:#ff8a8a">'+w+': '+String(e&&e.name||'')+' '+String(e&&e.message||e)+'</span>')};
 const framed=(()=>{try{return window.self!==window.top}catch(e){return true}})();
 const openFull=()=>{const c=document.documentElement.cloneNode(true);c.querySelectorAll('canvas').forEach(n=>n.remove());const u=URL.createObjectURL(new Blob(['<!DOCTYPE html>'+c.outerHTML],{type:'text/html'}));if(!window.open(u,'_blank'))location.href=u};
-vrb.onclick=async()=>{if(vrb.dataset.open){openFull();return}let s=null;try{audio();renderer.xr.setFramebufferScaleFactor(1);
+vrb.onclick=async()=>{if(vrb.dataset.open){openFull();return}let s=null;try{audio();renderer.xr.setFramebufferScaleFactor(S.gfx>1?1.6:S.gfx<1?.75:1);try{renderer.xr.setFoveation(S.gfx>1?0:1)}catch(e){}
 const errs=[];for(const c of [{optionalFeatures:['local-floor','bounded-floor']},{optionalFeatures:['local-floor']},{}]){try{s=await navigator.xr.requestSession('immersive-vr',c);break}catch(e){errs.push(e.name+': '+e.message);if(e&&e.name==='SecurityError')throw e}}
 if(!s){const sup=await navigator.xr.isSessionSupported('immersive-vr').catch(()=>'error');const e=new Error(errs.join(' | ')+' [protocol='+location.protocol+' secure='+isSecureContext+' framed='+framed+' supported='+sup+']');e.name='NotSupportedError';throw e}
 renderer.xr.setReferenceSpaceType('local-floor');
@@ -440,8 +445,8 @@ for(const p of Object.values(panels)){if(!p.mesh.visible)continue;let b=-1;for(c
 else ctrls.forEach(c=>c.userData.ln.visible=false);
 netUpdate(now,hpW,hq,hands[0].pos,hands[1].pos,hands[0].q,hands[1].q)}
 
-let last=0,lastErr='';renderer.setAnimationLoop(t=>{const dt=Math.max(.001,Math.min((t-last)/1000||.016,.05));last=t;try{update(dt,t)}catch(e){if(String(e)!==lastErr){lastErr=String(e);showErr('frame error',e)}}try{renderMirror()}catch(e){console.error('mirror',e)}renderer.render(scene,cam)});
-renderer.xr.addEventListener('sessionend',()=>console.warn('XR session ended'));
+let last=0,lastErr='';renderer.setAnimationLoop(t=>{const dt=Math.max(.001,Math.min((t-last)/1000||.016,.05));last=t;try{update(dt,t)}catch(e){if(String(e)!==lastErr){lastErr=String(e);showErr('frame error',e)}}dl.target.position.copy(rig.position);dl.position.set(rig.position.x+20,rig.position.y+40,rig.position.z+10);try{renderMirror()}catch(e){console.error('mirror',e)}renderer.render(scene,cam)});
+renderer.xr.addEventListener('sessionend',()=>console.warn('XR session ended'));renderer.xr.addEventListener('sessionstart',()=>{if(mir)mir.xf=0});
 {const gt=document.getElementById('gate');if(S.age)gt.remove();else{gt.style.display='flex';document.getElementById('g18').onclick=()=>{S.age=1;S.gore=1;save();gt.remove()};document.getElementById('gno').onclick=()=>{S.age=1;S.gore=0;save();gt.remove()}}}
-vol();startMode('lobby');
+applyGfx();vol();startMode('lobby');
 </script></body></html>
